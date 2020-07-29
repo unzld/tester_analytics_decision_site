@@ -1,0 +1,4 @@
+rev,(?P<rev>Revision \d\d\d\d[A-Z])
+dut,USING (?P<dut>ASM\d+) R[\d.]+(?:\(SW\), ASM\d+ R[\d.]+\(HW\) SERIAL # (?P<dut_sn>\d+))?
+tester_model,(?P<tester_model>ETS-364)[A-Z0-9 ]+RESULTS
+self_test,SELF TEST (?P<self_test>[A-Z]+)
