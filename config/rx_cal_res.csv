@@ -1,0 +1,3 @@
+cal_date,Last Calibration Date: (?P<cal_date>\d\d/\d\d/\d\d \d\d:\d\d\.\d\d)
+chk,\((?P<date>\d\d/\d\d/\d\d) (?P<time>\d\d:\d\d\.\d\d) - CAL REV:\d\d\d\d\)  (?:CHK|CHECK) STATUS: (?P<res>[A-Z]+)
+cal,\((?P<date>\d\d/\d\d/\d\d) (?P<time>\d\d:\d\d\.\d\d) - CAL REV:\d\d\d\d\)[ *]+CAL (?:STATUS: |RAM )(?P<res>[A-Z]+)
