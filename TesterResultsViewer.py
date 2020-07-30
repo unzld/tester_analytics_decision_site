@@ -323,7 +323,6 @@ def usage():
     print('single mode: test.py --file <inputfile>')
     print('directory mode: test.py --dir <inputfile> -c or -d or -cd')
 
-#Class definition for tester boards
 class Board:
     def __init__(self, btype, sn, slot):
         #default values, listed here for convenience
