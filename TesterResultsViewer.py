@@ -1,5 +1,6 @@
 import sys, getopt
 from pathlib import Path
+from os import mkdir
 import re
 #import pandas as pd
 #import timing
@@ -10,26 +11,14 @@ rx_cal = {}
 rx_cal_res = {}
 rx_diag = {}
 
-def parse_line(line, dict):
-    #For each entry in the regex dictionary, check if it has a match with the input line
-    for key, rx in dict.items():
-        match = rx.search(line)
-        if match:
-            #If it matches, return key and match object
-            return key, match
-    
-    #Else, return None
-    return None, None
-
 def load_tester_info(filepath):
+    rev = ''
+    dut = ''
+    dut_sn = ''
+    tester_model = ''
+    self_test = ''
     with open(filepath) as f:
         line = f.readline()
-        rev = ''
-        dut = ''
-        dut_sn = ''
-        tester_model = ''
-        self_test = ''
-
         while line:
             key, match = parse_line(line, rx_tester_info)
 
@@ -37,7 +26,8 @@ def load_tester_info(filepath):
                 rev = match.group('rev').strip()
             elif key == 'dut':
                 dut = match.group('dut').strip()
-                dut_sn = match.group('dut_sn').strip()
+                if match.group('dut_sn'): dut_sn = match.group('dut_sn').strip()
+                else: dut_sn = ''
             elif key == 'tester_model':
                 tester_model = match.group('tester_model').strip()
             elif key == 'self_test':
@@ -54,6 +44,7 @@ def load_tester_info(filepath):
         print(f'Revision Version: {rev}')
         if self_test:
             print(f'Self Test: {self_test}')
+    return dut_sn
 
 
 def load_cal_result(filepath, board_list):
@@ -116,7 +107,7 @@ def load_cal_result(filepath, board_list):
                         if res_match.group('res').strip() == 'UPDATED': res = 'PASS'
                         else: res = res_match.group('res').strip()
 
-                        board.cal_history.append(Entry(res_match.group('date').strip(), res_match.group('time').strip(), mode, sn, rev, res, remark))
+                        board.history.append(Entry(res_match.group('date').strip(), res_match.group('time').strip(), mode, sn, rev, res, remark))
                         break
                     
                     res_line = f.readline()
@@ -132,63 +123,46 @@ def print_cal_result(board_list):
 
         print('\nCalibration History')
         print('Date     | Time     | Mode | SN    | REV | Result | Remarks')
-        for i in item.cal_history:
+        for i in item.history:
             print(f'{i.date} | {i.time} | {i.mode} | {i.sn} | {i.rev}  | {i.res}   | {i.remark}')
 
     print(f'\nNumber of entries: {len(board_list)}')
 
 def gen_csv_cal(board_list, tester_num, output):
-    with open(f'{output}.csv', 'w') as f:
-        f.write(f'Tester,Board,Slot,Date,Time,Mode,SN,REV,Result,Remark\n')
+    #Check if output directory exists, if not create it
+    if not Path('./output').exists():
+        try:
+            mkdir('./output')
+        except OSError:
+            print('Failed creating output directory.')
+            exit(2)
+
+    with open(f'./output/{output}.csv', 'w') as f:
+        f.write(f'Tester,Board,Slot,DUT SN,Date,Time,Mode,SN,REV,Result,Remark\n')
         for board in board_list:
-            for i in board.cal_history:
-                f.write(f'{tester_num},{board.btype},{board.slot},\t{i.date},{i.time},{i.mode},\t{i.sn},{i.rev},{i.res},{i.remark}\n')
+            for i in board.history:
+                f.write(f'{tester_num},{board.btype},{board.slot},\t{i.dut},\t{i.date},{i.time},{i.mode},\t{i.sn},{i.rev},{i.res},{i.remark}\n')
+    
+    print(f'Process finished. Output located at ./output/{output}.csv.')
 
-
-def load_diag_result(filepath):
-    #List that stores board information
-    test_list = []
-    board_list = []
-    with open(filepath) as f:
-        line = f.readline()
-        start_list = []
-        end_list = []
-        date_list = []
-        lineno = 1
-        while(line):
-            key, match = parse_line(line, rx_diag)
-            if key == 'diag_table_start':
-                start_list.append(lineno)
-            elif key == 'diag_table_end':
-                end_list.append(lineno)
-                date_list.append(match.group('date').strip())
-
-            lineno += 1
-            line = f.readline()
+def gen_csv_diag(entry_list, tester_num, output):
+    #Check if output directory exists, if not create it
+    if not Path('./output').exists():
+        try:
+            mkdir('./output')
+        except OSError:
+            print('Failed creating output directory.')
+            exit(2)
+    
+    with open(f'./output/{output}.csv', 'w') as f:
+        f.write(f'Tester,Board,Date,Time,Mode,SN,Result,Failure\n')
+        for entry in entry_list:
+            sn = entry.sn
+            if not sn: sn = 'N/A' 
+            f.write(f'{tester_num},{entry.name},\t{entry.date},{entry.time},Diag,\t{sn},{entry.res},{entry.err}\n')
+    
+    print(f'Process finished. Output located at ./output/{output}.csv.')
         
-        if len(start_list) != len(end_list) != len(date_list):
-            print('Invalid log file.') #something is wrong, log file is corrupted/tampered
-        else:
-            #Store test runs in a list
-            for i in start_list:
-                idx = start_list.index(i)
-                test_list.append(Test(start_list[idx], end_list[idx], date_list[idx]))
-        
-        for item in test_list:
-            print(f'{item.start_idx} {item.end_idx} {item.date}')
-
-
-def load_regex_dict(filepath):
-    dict = {}
-    with open(filepath) as f:
-        line = f.readline()
-        while line:
-            #Parse line and split into key and value then store into dictionary
-            x = line.strip().strip('\n').split(',',1)
-            dict[x[0]] = re.compile(x[1])
-            line = f.readline()
-    return dict
-
 def main(argv):
     #START ---- Capture valid and invalid parameters ----
     try:
@@ -262,11 +236,30 @@ def main(argv):
 
         if len(cal_files):
             for log in cal_files:
-                load_tester_info(log.path)
+                dut = load_tester_info(log.path)
                 load_cal_result(log.path, board_list)
+
+                for item in board_list:
+                    for entry in item.history:
+                        entry.dut = dut
 
             print_cal_result(board_list)
             gen_csv_cal(board_list, tester_num, f'Summary_{tester_num}_Cal_{cal_files[0].date}_{cal_files[-1].date}')
+        
+        if len(diag_files):
+            entry_list = []
+            for log in diag_files:
+                load_tester_info(log.path)
+                entry_list += load_diag_result(log.path)
+
+            #Print Diag Result on terminal
+            print('-------------------------------------------------')
+            for entry in entry_list:
+                print(f'{entry.name} {entry.date} {entry.time} {entry.sn} {entry.res} {entry.err}')
+            print(f'Number of entries: {len(entry_list)}')
+
+            gen_csv_diag(entry_list, tester_num, f'Summary_{tester_num}_Diag_{diag_files[0].date}_{diag_files[-1].date}')
+                
         
     #Handle single file mode    
     elif mode == '--file':
@@ -286,10 +279,31 @@ def main(argv):
 
         #If CAL mode
         if log_mode.lower() == 'cal' and len(tester_num) and len(log_date):
-            load_tester_info(filepath)
+            dut = load_tester_info(filepath)
             load_cal_result(filepath, board_list)
             print_cal_result(board_list)
+
+            for item in board_list:
+                for entry in item.history:
+                    entry.dut = dut
+
             gen_csv_cal(board_list, tester_num, f'Summary_{tester_num}_{log_mode}_{log_date}')
+
+        #If DIAG mode    
+        elif log_mode.lower() == 'diag' and len(tester_num) and len(log_date):
+            entry_list = []
+
+            load_tester_info(filepath)
+            #board_list = preload_diag_result(filepath)
+            entry_list = load_diag_result(filepath)
+
+            #Print Diag Result on terminal
+            print('-------------------------------------------------')
+            for entry in entry_list:
+                print(f'{entry.name} {entry.date} {entry.time} {entry.sn} {entry.res} {entry.err}')
+            print(f'Number of entries: {len(entry_list)}')
+
+            gen_csv_diag(entry_list, tester_num, f'Summary_{tester_num}_{log_mode}_{log_date}')
         else:
             print(f'Invalid log file. {filename}')
             exit(2)
@@ -297,7 +311,153 @@ def main(argv):
     #load_cal_result('log.log')
     #load_diag_result('log.log')
 
-#Populate filelists depending on mode: cal or diag or both
+def load_diag_result(filepath):
+    master_entry_list = []
+    sn_board_list = [] #entries from individual lines
+    table_left = [] #entries from table - left
+    table_right = [] #entries from table - right
+    table_list = [] #table left + right
+    with open(filepath) as f:
+        line = f.readline()
+
+        while line:
+            key, match = parse_line(line, rx_diag)
+
+            if key == 'testing':
+                sn = match.group('sn').strip()
+                btype = match.group('btype').strip()
+                error = ''
+
+                #Read next line to check for errors
+                line = f.readline() 
+                while line:
+                    key2, match2 = parse_line(line, rx_diag)
+                    
+                    #error found
+                    if key2 == 'error':
+                        err_code = match2.group('error').strip()
+
+                        #if no listed errors yet
+                        if not len(error):
+                            error += f'{err_code}'
+                        else:
+                            if not error.split('_')[-1] == err_code:
+                                error += f'_{err_code}'
+                    else:
+                        #Time to save what we currently have
+                        if len(error) : res = 'PASS'
+                        else: res = 'FAIL'
+                        entry = Entry('', '', 'diag', sn, '', res, '')
+                        entry.err = error
+                        entry.name = btype
+                        sn_board_list.append(entry)
+                        break
+
+                    line = f.readline()
+
+            elif key == 'diag_table_long':
+                slot1 = match.group('slot')
+                if not slot1: slot1 = ''
+                name1 = match.group('btype').strip() + ' ' + slot1
+                res1 = match.group('res').strip() 
+                entry1 = Entry('', '', 'diag', '', '', res1, '')
+                entry1.name = name1
+                if res1 != 'N/A' and len(res1):
+                    table_left.append(entry1)
+
+                slot2 = match.group('slot2')
+                if not slot2: slot2 = ''
+                name2 = match.group('btype2').strip() + ' ' + slot2
+                res2 = match.group('res2').strip()
+                entry2 = Entry('', '', 'diag', '', '', res2, '')
+                entry2.name = name2
+                if res2 != 'N/A' and len(res2):
+                    table_right.append(entry2)
+
+                line = f.readline()
+                continue
+
+            elif key == 'diag_table_end':
+                table_list = table_left + table_right
+                
+                for sn_entry in sn_board_list:
+                    for table_entry in table_list:
+                        if sn_entry.name in table_entry.name and not table_entry.sn:
+                            table_entry.sn = sn_entry.sn
+                            table_entry.err = sn_entry.err
+                            break
+                
+                for entry in table_list:
+                    entry.date = match.group('date').strip()
+                    entry.time = match.group('time').strip()
+
+                    #print(f'{entry.name} {entry.date} {entry.time} {entry.sn} {entry.res} {entry.err}')
+                
+                master_entry_list += table_list
+                #reset
+                sn_board_list = [] #entries from individual lines
+                table_left = [] #entries from table - left
+                table_right = [] #entries from table - right
+                table_list = [] #table left + right
+
+
+                line = f.readline()
+                continue
+           
+            else:
+                line = f.readline()     
+                
+    return master_entry_list
+
+def preload_diag_result(filepath):
+    """
+    Preloads the board with information from log table summary.
+
+    Parameters:
+    board_list -- list containing boards to preload
+    """
+    finished = False
+
+    board_list = []
+    table_left = []
+    table_right = []
+
+    with open(filepath) as f:
+        line = f.readline()
+        while line:
+            #print(line)
+            #Parse every line using parse_line and store it to key and match
+            key, match = parse_line(line, rx_diag)
+
+            if key == 'diag_table_long':
+                slot1 = match.group('slot')
+                if not slot1:
+                    slot1 = 'N/A'
+                board1 = Board(match.group('btype').strip(), 'N/A', slot1)
+                board1.test = match.group('test').strip()
+                table_left.append(board1)
+
+                slot2 = match.group('slot2')
+                if not slot2:
+                    slot2 = 'N/A'
+                board2 = Board(match.group('btype2').strip(), 'N/A', slot2)
+                board2.test = match.group('test2').strip()
+                table_right.append(board2)
+            elif key == 'diag_table_end':
+                finished = True
+            
+            if finished: break
+            else: line = f.readline()
+    
+    board_list = table_left + table_right
+
+    """ for item in board_list:
+        print(f'{item.test} {item.btype} {item.slot}')
+        
+    print(f'Number of entries: {len(board_list)}') """
+
+    return board_list
+
 def get_logs(filepath, mode):
     file_list = []
     tester_num = ''
@@ -318,13 +478,56 @@ def get_logs(filepath, mode):
             file_list.append(Log(tester_num, child, log_date))
 
     return file_list, tester_num
+
+def load_regex_dict(filepath):
+    dict = {}
+    with open(filepath) as f:
+        line = f.readline()
+        while line:
+            #Parse line and split into key and value then store into dictionary
+            x = line.strip().strip('\n').split(',',1)
+            dict[x[0]] = re.compile(x[1])
+            line = f.readline()
+    return dict
+
+def parse_line(line, dict):
+    #For each entry in the regex dictionary, check if it has a match with the input line
+    for key, rx in dict.items():
+        match = rx.search(line)
+        if match:
+            #If it matches, return key and match object
+            return key, match
+    
+    #Else, return None
+    return None, None
         
 def usage():
     print('single mode: test.py --file <inputfile>')
     print('directory mode: test.py --dir <inputfile> -c or -d or -cd')
 
 class Board:
+    """
+    A class to represent a tester board.
+
+    Attributes:
+    btype -- board type
+    sn -- serial number
+    slot -- slot number
+    rev -- revision number
+
+    cal_date -- last calibration date
+    history -- list of class Entry documenting test results
+
+    """
     def __init__(self, btype, sn, slot):
+        """
+        Constructor method for Board.
+
+        Parameters:
+        btype -- board type
+        sn -- serial number
+        slot -- slot number
+        """
         #default values, listed here for convenience
         self.btype = btype
         self.sn = sn
@@ -333,12 +536,40 @@ class Board:
 
         #Only for cal logs
         self.cal_date = '' 
-        self.cal_history = []
-        self.chk_history = []
+        self.history = []
 
-#Class definition for cal/check/diag entries
+        #Only for diag logs
+        self.test = ''
+
 class Entry:
+    """
+    A class to represent a test result entry.
+
+    Attributes:
+    date -- date of entry
+    time -- time of entry
+    mode -- test mode for entry (cal, chk, diag)
+    sn -- serial number
+    rev -- revision number
+    res -- result (PASS/FAIL/etc)
+    remark -- added information for the entry, shows failure details for diag mode
+    err -- error codes
+
+    """
     def __init__(self, date, time, mode, sn, rev, result, remark):
+        """
+        Constructor method for Entry.
+
+        Parameters:
+        date -- date of entry
+        time -- time of entry
+        mode -- test mode for entry (cal, chk, diag)
+        sn -- serial number
+        rev -- revision number
+        res -- result (PASS/FAIL/etc)
+        remark -- added information for the entry, shows failure details for diag mode
+        dut -- DUT board information (SN for Cal, Model for Diag)
+        """
         self.date = date
         self.time = time
         self.mode = mode
@@ -346,17 +577,30 @@ class Entry:
         self.rev = rev
         self.res = result
         self.remark = remark
+        self.dut = ''
 
-#Class definition for diag test entries
-class Test:
-    def __init__(self, start_idx, end_idx, date):
-        self.start_idx = start_idx
-        self.end_idx = end_idx
-        self.date = date
+        #For diag only
+        self.err = ''
+        self.name = ''
 
-#Class definition for log files
 class Log():
+    """
+    A class to represent a log file.
+
+    Attributes:
+    tester_num -- tester number of log file
+    path -- path location of log file
+    date -- date of log file
+    """
     def __init__(self, tester_num, path, date):
+        """
+        Constructor method for Log.
+
+        Parameters:
+        tester_num -- tester number of log file
+        path -- path location of log file
+        date -- date of log file
+        """
         self.tester_num = tester_num
         self.path = path
         self.date = date
