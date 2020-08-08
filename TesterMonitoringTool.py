@@ -6,12 +6,23 @@ import jsonpickle
 import json
 import re
 import timing
+import argparse
+import os
 
 rx_diag = {}
 rx_cal = {}
 rx_cal_res = {}
 
+jsonpickle.set_encoder_options('json', indent=2)
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-s','--setup', action='store_true', help='Clear existing board profiles and generate new ones.')
+parser.add_argument('-d','--dir', help='Directory path to monitor for new logs.', required=True)
+
 def main():
+    args = parser.parse_args()
+
+    ''' Constants ----------------------- '''
     global rx_tester_info
     global rx_cal
     global rx_cal_res
@@ -22,34 +33,62 @@ def main():
     rx_cal_res = load_regex_dict('config/rx_cal_res.csv')
     rx_diag = load_regex_dict('config/rx_diag.csv')
 
-    filepath = 'C:/Users/a0489136/Desktop/Project/Main Project/samplelogs/clprea83/Diag_files'
-    
-    Board.clear_all_profiles()
-    gen_profiles('./config/setup.log', 'CLPREA83')
+    ''' Monitoring Start ----------------------- '''
+    filepath = args.dir
+    #filepath = 'C:/Users/a0489136/Desktop/Project/Main Project/samplelogs/clprea83/Cal_files'
+    #filepath = 'C:/Users/a0489136/Desktop/test/samplelogs/logs_Ea90'
 
-    #Get list of logs to process
-    queue = get_jobs(filepath)
-    print(f'jobs to do: {len(queue)}')
-    
-    #Load profiles from ./profiles
-    board_list = load_profiles()
+    #Clear and Generate profiles
+    if args.setup:
+        clear_filelist()
+        
+        #Get list of logs to process
+        queue = get_jobs(filepath)
+        #print(f'Found {len(queue)} logs to record.')
+        tester_name = str(queue[0]).replace('/','\\').split('\\')
+        tester_name = tester_name[-1].split('_')[1]
 
-    #Process each job in queue
-    count = 0
-    for job in queue:
-        #load_cal_result(job, board_list)
-        count += load_diag_result(job, board_list)
-        #load_diag_result(job, board_list)
-    print(f'number of total entries: {count}')
+        #Clear old profiles and generate new ones
+        Board.clear_all_profiles()
+        gen_profiles('./config/setup.log', tester_name)
 
-    #Save profile changes to disk
-    """ save_profiles(board_list) """
+    else:
+        #Get list of logs to process
+        queue = get_jobs(filepath)
+        print(f'Found {len(queue)} new logs to record in {filepath}.')
 
-    #Add finished jobs to file_list.json
-    #update_filelist(queue)
-    print('hey')
+        #Load profiles from ./profiles
+        board_list = load_profiles()
 
-def load_diag_result(filepath, board_list):
+        #Process each job in queue
+        cal_count = 0
+        diag_count = 0
+        cal_entry_count = 0
+        diag_entry_count = 0
+        if queue: print('\nReading new logs..')
+        for job in queue:
+            filename = str(job).replace('/','\\').split('\\')
+            filename = filename[-1]
+            print(filename)
+            log_mode = filename.split('_')[0]
+
+            if log_mode.lower() == 'cal':
+                cal_entry_count += load_cal_result(job, board_list, filename)
+                cal_count += 1
+            elif log_mode.lower() == 'diag':
+                diag_entry_count += load_diag_result(job, board_list, filename)
+                diag_count += 1
+
+        if cal_count > 0: print(f'Total calibration logs processed: {cal_count}')
+        if diag_count > 0: print(f'Total diagnostic logs processed: {diag_count}')
+
+        #Save profile changes to disk
+        save_profiles(board_list)
+
+        #Add finished jobs to file_list.json
+        update_filelist(queue)
+
+def load_diag_result(filepath, board_list, filename):
     '''
     Reads diagnostic log located in filepath and adds entries to diag_history of boards in board_list
     '''
@@ -60,11 +99,15 @@ def load_diag_result(filepath, board_list):
     table_list = [] #table left + right
     with open(filepath) as f:
         line = f.readline()
-
+        dut = ''
         while line:
             key, match = parse_line(line, rx_diag)
 
-            if key == 'testing':
+            if key == 'dut':
+                dut = match.group('dut').strip()
+                line = f.readline()
+                continue
+            elif key == 'testing':
                 sn = match.group('sn').strip()
                 btype = match.group('btype').strip()
                 error = ''
@@ -88,19 +131,20 @@ def load_diag_result(filepath, board_list):
                         #Time to save what we currently have
                         if len(error) : res = 'PASS'
                         else: res = 'FAIL'
-                        entry = DiagEntry('', '', '', sn, res, error, btype, sn)
+                        if not dut: dut = 'N/A'
+                        entry = DiagEntry(dut, '', '', sn, res, error, filename, btype, sn)
                         sn_board_list.append(entry)
                         break
 
                     line = f.readline()
 
-            elif key == 'diag_table_long':
+            elif key == 'diag_table_setup':
                 #Match left side of table
                 slot1 = match.group('slot')
                 if not slot1: slot1 = '00'
                 name1 = match.group('btype').strip()
                 res1 = match.group('res').strip() 
-                entry1 = DiagEntry('', '', '', '', res1, '', name1, slot1)
+                entry1 = DiagEntry(dut, '', '', 'N/A', res1, '', filename, name1, slot1)
                 if res1 != 'N/A' and len(res1):
                     table_left.append(entry1)
 
@@ -109,7 +153,7 @@ def load_diag_result(filepath, board_list):
                 if not slot2: slot2 = '00'
                 name2 = match.group('btype2').strip()
                 res2 = match.group('res2').strip()
-                entry2 = DiagEntry('', '', '', '', res2, '', name2, slot2)
+                entry2 = DiagEntry(dut, '', '', 'N/A', res2, '', filename, name2, slot2)
                 if res2 != 'N/A' and len(res2):
                     table_right.append(entry2)
 
@@ -121,7 +165,7 @@ def load_diag_result(filepath, board_list):
                 
                 for sn_entry in sn_board_list:
                     for table_entry in table_list:
-                        if sn_entry.tname in table_entry.tname and not table_entry.sn:
+                        if sn_entry.tname in table_entry.tname and table_entry.sn == 'N/A':
                             table_entry.sn = sn_entry.sn
                             table_entry.remark = sn_entry.remark
                             break
@@ -155,39 +199,62 @@ def load_diag_result(filepath, board_list):
             """ if entry.tname == 'Master Clock' and board.name == 'Master Clock':
                 print('hi') """
             if entry.tname.lower() in board.name.lower() and board.slot in entry.tslot:
+                if entry.sn == '': sn = 'N/A'
                 board.diag_history.append(entry)
-                entry.bool = True
+                #entry.bool = True
                 #master_entry_list.remove(entry)
                 count += 1
                 break
     
-    for entry in master_entry_list:
+    """ for entry in master_entry_list:
         if not entry.bool:
-            print(f'{entry.tname} {entry.tslot} {entry.date} {filepath}')
+            print(f'{entry.tname} {entry.tslot} {entry.date} {filepath}') """
 
     
-    print(f'number of saved entries: {count}')
+    #print(f'number of saved entries: {count}')
+
+    #print(f'Processed diagnostic log from {filepath}.')
+
     return count
 
-def load_cal_result(filepath, board_list):
+def load_cal_result(filepath, board_list, filename):
     '''
     Reads calibration log located in filepath and adds entries to cal_history of boards in board_list
     '''
+    count = 0
     with open(filepath) as f:
         line = f.readline()
-        loaded_tester_info = False
+        #loaded_tester_info = False
         dut = ''
+        dut_pn = ''
         self_test = ''
+        backup_date = ''
+        backup_time = ''
+        last_line = None
         while line:
             #print(line)
             #Parse every line using parse_line and store it to key and match
-            if loaded_tester_info:
+            """ if loaded_tester_info:
                 key, match = parse_line(line, rx_cal)
             else:
-                key, match = parse_line(line, rx_tester_info)
+                key, match = parse_line(line, rx_tester_info) """
+            
+            key, match = parse_line(line, rx_cal)
 
             #If key is not empty, it means we got a match
-            if key and loaded_tester_info:
+            if key == 'self_test':
+                self_test = match.group('self_test')
+
+            elif key == 'dut':
+                dut = match.group('dut_sn')
+                dut_pn = match.group('dut')
+            
+            #Backup date and time is in case it fails Self-test
+            elif key == 'backup_date':
+                backup_date = match.group('date').strip()
+                backup_time = match.group('time').strip()
+
+            elif key not in ('dut', 'self_test') and key:
                 btype = match.group('btype').strip() #Board name
                 slot = match.group('slot').strip() #Stores board slot
 
@@ -229,19 +296,32 @@ def load_cal_result(filepath, board_list):
 
                         date = res_match.group('date').strip()
                         time = res_match.group('time').strip()
-                        board.cal_history.append(CalEntry(dut, date, time, sn, res, remark, mode, rev, self_test))
+                        if self_test == '': self_test = 'N/A'
+                        board.cal_history.append(CalEntry(dut, date, time, sn, res, remark, filename, mode, rev, self_test, dut_pn))
+                        count += 1
                         break
                     
+                    elif res_key == 'self_test':
+                        board.cal_history.append(CalEntry(dut, backup_date, backup_time, sn, 'FAIL', '', filename, mode, rev, self_test, dut_pn))
+                        count += 1
+                        f.seek(last_line)
+                        break
+
+                    """ elif res_key == 'fail':
+                        board.cal_history.append(CalEntry(dut, backup_date, backup_time, sn, 'FAIL', '', filename, mode, rev, self_test, dut_pn))
+                        count += 1
+                        break """
+                    
+                    
+                    last_line = f.tell()
                     res_line = f.readline()
-            elif key and not loaded_tester_info:
-                if key == 'self_test':
-                    self_test = match.group('self_test')
-                elif key == 'dut' and self_test == 'PASSED':
-                    dut = match.group('dut_sn')
-                    loaded_tester_info = True
+
             #Go to next line
             line = f.readline()
-    print(f'Processed log from {filepath}.')
+    #print(f'{count} entries done')
+    #print(f'Processed calibration log from {filepath}.')
+
+    return count
 
 def gen_profiles(filepath, tester):
     '''
@@ -286,6 +366,8 @@ def gen_profiles(filepath, tester):
         if item.name == 'DPU':
             item.name = 'DPU16'
         item.generate_profile()
+
+    print(f'Generated {len(table_left + table_right)} new board profiles.')
 
     return table_left + table_right
 
@@ -364,7 +446,11 @@ def update_filelist(done_jobs):
                     files_json.append(item)
             f.seek(0)
             json.dump(files_json, f, indent=4)
-            
+
+def clear_filelist():
+    if Path(f'./config/file_list.json').exists():
+        os.remove(f'./config/file_list.json')
+
 def parse_line(line, dict):
     '''
     Matches RegEx from dict to line string and returns the key and match.
@@ -409,11 +495,11 @@ class Board(object):
         self.name = name
         self.slot = slot
         self.tester = tester
+        self.path = None
 
         self.cal_history = []
         self.diag_history = []
-        self.path = None
-    
+        
     def generate_profile(self):
         '''
         Converts Board instance to json format and outputs it in ./profile.
@@ -463,38 +549,42 @@ class Board(object):
                 rmtree('./profiles')
             except OSError:
                 print('Failed deleting profile directory.')
+        
+        print('Directory ./profiles has been deleted. All board profiles are cleared.')
            
 class EntryBase(object):
     '''
     Base class for log entries.
     '''
-    def __init__(self, dut, date, time, sn, result, remark):
+    def __init__(self, dut, date, time, sn, result, remark, logname):
         self.dut = dut
         self.date = date
         self.time = time
         self.sn = sn
         self.result = result
         self.remark = remark
+        self.logname = logname
 
 class CalEntry(EntryBase):
     '''
     Class for calibration log entries. Inherits from EntryBase.
     '''
-    def __init__(self, dut, date, time, sn, result, remark, mode, rev, self_test):
-        EntryBase.__init__(self, dut, date, time, sn, result, remark)
+    def __init__(self, dut, date, time, sn, result, remark, logname, mode, rev, self_test, dut_pn):
+        EntryBase.__init__(self, dut, date, time, sn, result, remark, logname)
         self.mode = mode
         self.rev = rev
         self.self_test = self_test
+        self.dut_pn = dut_pn
 
 class DiagEntry(EntryBase):
     '''
     Class for diagnostic log entries. Inherits from EntryBase.
     '''
-    def __init__(self, dut, date, time, sn, result, remark, tname, tslot):
-        EntryBase.__init__(self, dut, date, time, sn, result, remark)
+    def __init__(self, dut, date, time, sn, result, remark, logname, tname, tslot):
+        EntryBase.__init__(self, dut, date, time, sn, result, remark, logname)
         self.tname = tname
         self.tslot = tslot
-        self.bool = False
+        #self.bool = False
 
 if __name__ == '__main__':
     main()

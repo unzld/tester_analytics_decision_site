@@ -2,10 +2,10 @@ import argparse
 from pathlib import Path
 import jsonpickle
 import os
-from testermonitoringtool import Board
-from testermonitoringtool import EntryBase
-from testermonitoringtool import CalEntry
-from testermonitoringtool import DiagEntry
+from TesterMonitoringTool import Board
+from TesterMonitoringTool import EntryBase
+from TesterMonitoringTool import CalEntry
+from TesterMonitoringTool import DiagEntry
 from datetime import date
 from os import mkdir
 
@@ -13,7 +13,6 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('-m','--merge', action='store_true', help='Merge cal and diag entries in summary output.')
 parser.add_argument('-f', '--file', help='Optional: summarizes the specified .LOG file instead.')
-#parser.add_argument('-f', '--file', help='Optional: summarizes the specified log file instead.')
 
 def main():
     args = parser.parse_args()
@@ -52,6 +51,7 @@ def load_profiles():
 def gen_csv_cal(board_list):
     today = date.today().strftime('%m%d%Y')
     filename = f'Summary_Cal_All_{today}'
+    empty = True
     if not Path('./output').exists():
         try:
             mkdir('./output')
@@ -60,16 +60,22 @@ def gen_csv_cal(board_list):
             exit(2)
 
     with open(f'./output/{filename}.csv', 'w') as f:
-        f.write(f'Tester,Board,Slot,DUT SN,Self-Test,Date,Time,Mode,SN,REV,Result,Remark\n')
+        f.write(f'Tester,Board,Slot,DIB SN,DIB PN,Self-Test,Date,Time,Mode,SN,REV,Result,Remark\n')
         for board in board_list:
             for entry in board.cal_history:
-                f.write(f'{board.tester},{board.name},{board.slot},\t{entry.dut},{entry.self_test},\t{entry.date},\t{entry.time},{entry.mode},\t{entry.sn},{entry.rev},{entry.result},{entry.remark}\n')
+                empty = False
+                f.write(f'{board.tester},{board.name},\t{board.slot},\t{entry.dut},\t{entry.dut_pn},{entry.self_test},\t{entry.date},\t{entry.time},{entry.mode},\t{entry.sn},{entry.rev},{entry.result},{entry.remark}\n')
     
-    print(f'Process finished. Output located at ./output/{filename}.csv.')
+    if empty:
+        os.remove(f'./output/{filename}.csv')
+        print(f'Process finished. Calibration summary NOT generated. Run TesterMonitoringTool to update boards.')
+    else:
+        print(f'Process finished. Calibration summary located at ./output/{filename}.csv.')
 
 def gen_csv_diag(board_list):
     today = date.today().strftime('%m%d%Y')
     filename = f'Summary_Diag_All_{today}'
+    empty = True
     if not Path('./output').exists():
         try:
             mkdir('./output')
@@ -78,16 +84,23 @@ def gen_csv_diag(board_list):
             exit(2)
 
     with open(f'./output/{filename}.csv', 'w') as f:
-        f.write(f'Tester,Board,Slot,DUT Board,Date,Time,SN,Result,Remark\n')
+        f.write(f'Tester,Board,Slot,DIB PN,Date,Time,SN,Result,Remark\n')
         for board in board_list:
             for entry in board.diag_history:
+                empty = False
+                if entry.result == 'P': entry.result = 'PASS'
                 f.write(f'{board.tester},{board.name},\t{board.slot},{entry.dut},\t{entry.date},\t{entry.time},\t{entry.sn},{entry.result},{entry.remark}\n')
     
-    print(f'Process finished. Output located at ./output/{filename}.csv.')
+    if empty:
+        os.remove(f'./output/{filename}.csv')
+        print(f'Process finished. Diagnostic summary NOT generated. Run TesterMonitoringTool to update boards.')
+    else:
+        print(f'Process finished. Diagnostic summary located at ./output/{filename}.csv.')
 
 def gen_csv_merged(board_list):
     today = date.today().strftime('%m%d%Y')
     filename = f'Summary_Cal_Diag_All_{today}'
+    empty = True
     if not Path('./output').exists():
         try:
             mkdir('./output')
@@ -96,14 +109,22 @@ def gen_csv_merged(board_list):
             exit(2)
 
     with open(f'./output/{filename}.csv', 'w') as f:
-        f.write(f'Tester,Board,Slot,DUT SN,Self-Test,Date,Time,Mode,SN,REV,Result,Remark\n')
+        f.write(f'Tester,Board,Slot,DIB SN,DIB PN,Self-Test,Date,Time,Mode,SN,REV,Result,Remark\n')
         for board in board_list:
             for entry in board.cal_history + board.diag_history:
                 if isinstance(entry, CalEntry):
-                    f.write(f'{board.tester},{board.name},{board.slot},\t{entry.dut},{entry.self_test},\t{entry.date},\t{entry.time},{entry.mode},\t{entry.sn},{entry.rev},{entry.result},{entry.remark}\n')
+                    empty = False
+                    f.write(f'{board.tester},{board.name},\t{board.slot},\t{entry.dut},\t{entry.dut_pn},{entry.self_test},\t{entry.date},\t{entry.time},{entry.mode},\t{entry.sn},{entry.rev},{entry.result},{entry.remark}\n')
                 elif isinstance(entry, DiagEntry):
-                    f.write(f'{board.tester},{board.name},{board.slot},\t{entry.dut},N/A,\t{entry.date},\t{entry.time},Diag,\t{entry.sn},N/A,{entry.result},{entry.remark}\n')
-    print(f'Process finished. Output located at ./output/{filename}.csv.')
+                    empty = False
+                    if entry.result == 'P': entry.result = 'PASS'
+                    f.write(f'{board.tester},{board.name},\t{board.slot},N/A,\t{entry.dut},N/A,\t{entry.date},\t{entry.time},Diag,\t{entry.sn},N/A,{entry.result},{entry.remark}\n')
+    
+    if empty:
+        os.remove(f'./output/{filename}.csv')
+        print(f'Process finished. Summary NOT generated. Run TesterMonitoringTool to update boards.')
+    else:
+        print(f'Process finished. Merged summary located at ./output/{filename}.csv.')
 
 def gen_file(board_list, filename):
     mode = ''
@@ -138,6 +159,7 @@ def gen_file(board_list, filename):
                 for entry in board.diag_history:
                     if entry.logname.lower().endswith(f'{filename.lower()}.log'):
                         empty = False
+                        if entry.result == 'P': entry.result = 'PASS'
                         f.write(f'{board.tester},{board.name},\t{board.slot},{entry.dut},\t{entry.date},\t{entry.time},\t{entry.sn},{entry.result},{entry.remark}\n')
 
     if empty:
