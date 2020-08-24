@@ -5,3 +5,6 @@ mcu,(?P<mode>Cal|Check) (?P<btype>MCU):\s+SN (?P<sn>\d+)\s+REV (?P<rev>\d+)(?P<s
 qtmu,(?P<mode>Cal|Check) (?P<btype>QTMU)(?P<slot>\d+):\s+SN (?P<sn>\d+)\s+REV (?P<rev>\d+)
 dpu,(?P<mode>Cal|Check) DPU(?P<slot>\d+):\s+(?P<btype>DPU16)\s+SN (?P<sn>\d+)\s+REV (?P<rev>\d+)
 dig_integ,(?P<mode>Cal|Check) (?P<btype>Digital Integration):\s+SN (?P<sn>\d+)\s+REV (?P<rev>\d+)(?P<slot>)
+dut,USING (?P<dut>ASM\d+) R[\d.]+(?:\(SW\), ASM\d+ R[\d.]+\(HW\) SERIAL # (?P<dut_sn>\d+))?
+self_test,SELF TEST (?P<self_test>[A-Z]+)
+backup_date,START OF LAP TIME:\s+(?P<date>\d\d/\d\d/\d\d)\s+(?P<time>\d\d:\d\d:\d\d)

@@ -1,5 +1,7 @@
+dut,USING (?P<dut>ASM\d+) R[\d.]+(?:\(SW\), ASM\d+ R[\d.]+\(HW\) SERIAL # (?P<dut_sn>\d+))?
 diag_table_start,[\w-]+ LEVEL \d DIAGNOSTICS TEST RESULTS
 diag_table_end,\s+Finish Time = (?P<date>\d\d/\d\d/\d\d)  (?P<time>\d\d:\d\d:\d\d)
+diag_table_setup,(?P<test>[0-9]+) - (?P<btype>(?:[a-zA-Z]+[0-9]+\s|[a-zA-Z]+\s)+)\s*(?P<slot>[0-9]+ - [0-9]+|\d+)?(?:->\d+)?\s*(?P<res>P|FAIL|\?\?\?\?|N/A|\s)\s+\|\s+(?P<test2>[0-9]+) - (?P<btype2>(?:[a-zA-Z]+[0-9]+\s|[a-zA-Z]+\s)+)\s*(?P<slot2>[0-9]+ - [0-9]+|\d+)?(?:->\d+)?\s*(?P<res2>P|FAIL|\?\?\?\?|N/A|\s)\s+\|
 diag_table_long,(?P<test>[0-9]+) - (?P<btype>(?:[a-zA-Z]+[0-9]+\s|[a-zA-Z]+\s)+)\s*(?P<slot>[0-9]+ - [0-9]+|[0-9->]+)?\s*(?P<res>P|FAIL|\?\?\?\?|N/A|\s)\s+\|\s+(?P<test2>[0-9]+) - (?P<btype2>(?:[a-zA-Z]+[0-9]+\s|[a-zA-Z]+\s)+)\s*(?P<slot2>[0-9]+ - [0-9]+|[0-9->]+)?\s*(?P<res2>P|FAIL|\?\?\?\?|N/A|\s)\s+\|
 t_num,(?P<tnum>\d+) - (.+)\n
 testing,Testing (?P<btype>\w+)(?:[0-9-]+)? Serial# (?P<sn>\d+)

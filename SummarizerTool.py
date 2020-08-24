@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 import jsonpickle
 import os
+import TesterMonitoringTool as tmt
 from TesterMonitoringTool import Board
 from TesterMonitoringTool import EntryBase
 from TesterMonitoringTool import CalEntry
@@ -16,41 +17,26 @@ parser.add_argument('-f', '--file', help='Optional: summarizes the specified .LO
 
 def main():
     args = parser.parse_args()
-    board_list = []
+    board_list = tmt.load_profiles()
     
     if args.file:
-        board_list = load_profiles()
-        gen_file(board_list, args.file)
+        # Single file mode
+        if len(board_list) == 0:
+            print('Board profiles are missing. Run TesterMonitoringTool first.')
+            exit(2)
+        else:
+            gen_file(board_list, args.file)
     else:
-        board_list = load_profiles()
-
+        # Merge mode
         if args.merge:
             gen_csv_merged(board_list)
         else:
             gen_csv_cal(board_list)
             gen_csv_diag(board_list)
 
-def load_profiles():
-    '''
-    Loads existing profiles in ./profiles and returns them as a list of Board objects
-    '''
-    board_list = []
-    for profile in Path('./profiles').iterdir():
-        if profile.is_file():
-            #load profile
-            with open(profile, 'r') as f:
-                json_str = f.read()
-                board = jsonpickle.decode(json_str)
-                #print(f'{board.name} {board.slot} {board.tester}')
-                board_list.append(board)
-    
-    print(f'{len(board_list)} board profiles loaded.')
-
-    return board_list
-
 def gen_csv_cal(board_list):
     today = date.today().strftime('%m%d%Y')
-    filename = f'Summary_Cal_All_{today}'
+    filename = f'{board_list[0].tester}_Summary_Cal_All_{today}'
     empty = True
     if not Path('./output').exists():
         try:
@@ -58,7 +44,7 @@ def gen_csv_cal(board_list):
         except OSError:
             print('Failed creating output directory.')
             exit(2)
-
+    # Loop through board_list and write to .csv file
     with open(f'./output/{filename}.csv', 'w') as f:
         f.write(f'Tester,Board,Slot,DIB SN,DIB PN,Self-Test,Date,Time,Mode,SN,REV,Result,Remark\n')
         for board in board_list:
@@ -66,6 +52,7 @@ def gen_csv_cal(board_list):
                 empty = False
                 f.write(f'{board.tester},{board.name},\t{board.slot},\t{entry.dut},\t{entry.dut_pn},{entry.self_test},\t{entry.date},\t{entry.time},{entry.mode},\t{entry.sn},{entry.rev},{entry.result},{entry.remark}\n')
     
+    # If empty, delete the file
     if empty:
         os.remove(f'./output/{filename}.csv')
         print(f'Process finished. Calibration summary NOT generated. Run TesterMonitoringTool to update boards.')
@@ -74,7 +61,7 @@ def gen_csv_cal(board_list):
 
 def gen_csv_diag(board_list):
     today = date.today().strftime('%m%d%Y')
-    filename = f'Summary_Diag_All_{today}'
+    filename = f'{board_list[0].tester}_Summary_Diag_All_{today}'
     empty = True
     if not Path('./output').exists():
         try:
@@ -83,14 +70,15 @@ def gen_csv_diag(board_list):
             print('Failed creating output directory.')
             exit(2)
 
+    # Loop through board_list and write to .csv file
     with open(f'./output/{filename}.csv', 'w') as f:
         f.write(f'Tester,Board,Slot,DIB PN,Date,Time,SN,Result,Remark\n')
         for board in board_list:
             for entry in board.diag_history:
                 empty = False
-                if entry.result == 'P': entry.result = 'PASS'
                 f.write(f'{board.tester},{board.name},\t{board.slot},{entry.dut},\t{entry.date},\t{entry.time},\t{entry.sn},{entry.result},{entry.remark}\n')
     
+    # If empty, delete the file
     if empty:
         os.remove(f'./output/{filename}.csv')
         print(f'Process finished. Diagnostic summary NOT generated. Run TesterMonitoringTool to update boards.')
@@ -99,7 +87,7 @@ def gen_csv_diag(board_list):
 
 def gen_csv_merged(board_list):
     today = date.today().strftime('%m%d%Y')
-    filename = f'Summary_Cal_Diag_All_{today}'
+    filename = f'{board_list[0].tester}_Summary_Cal_Diag_All_{today}'
     empty = True
     if not Path('./output').exists():
         try:
@@ -107,7 +95,8 @@ def gen_csv_merged(board_list):
         except OSError:
             print('Failed creating output directory.')
             exit(2)
-
+            
+    # Loop through board_list and write to .csv file
     with open(f'./output/{filename}.csv', 'w') as f:
         f.write(f'Tester,Board,Slot,DIB SN,DIB PN,Self-Test,Date,Time,Mode,SN,REV,Result,Remark\n')
         for board in board_list:
@@ -120,6 +109,7 @@ def gen_csv_merged(board_list):
                     if entry.result == 'P': entry.result = 'PASS'
                     f.write(f'{board.tester},{board.name},\t{board.slot},N/A,\t{entry.dut},N/A,\t{entry.date},\t{entry.time},Diag,\t{entry.sn},N/A,{entry.result},{entry.remark}\n')
     
+    # If empty, delete the file
     if empty:
         os.remove(f'./output/{filename}.csv')
         print(f'Process finished. Summary NOT generated. Run TesterMonitoringTool to update boards.')

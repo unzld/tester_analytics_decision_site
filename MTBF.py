@@ -34,7 +34,7 @@ def main():
     df['Date'] = df['Date'].dt.strftime('%m/%d/%Y')
     
     # Pivot the table
-    df = df.groupby(['Board', 'SN', 'Slot', 'Date', 'Time', 'Mode', 'Result']).size().unstack().fillna(0)
+    df = df.groupby(['Date', 'SN', 'Result']).size().unstack().fillna(0)
 
     if '????' in df.columns:
         df = df.drop(columns='????') #Hide ???? for now
@@ -43,7 +43,15 @@ def main():
     if 'FAIL' in df.columns:#Safety check in case FAIL doesnt exist
         df = df.loc[df['FAIL'] > 0]
 
-    if not df.empty:
+    # Pivot the table again
+    df = df.groupby(['Date', 'SN']).size().unstack().fillna(0)
+
+    # Get number of fails
+    df['Sum'] = df.loc[:,df.columns].sum(axis=1)
+    df = df['Sum']
+    print(df)
+
+    """ if not df.empty:
         # Populate list of boards that has at least 1 failure
         data = {'Board':df.index.get_level_values(0).tolist(), 'SN':df.index.get_level_values(1).tolist()}
         board_sn = pd.DataFrame(data).drop_duplicates()
@@ -63,6 +71,8 @@ def main():
                         break
             curr_board.fails.append(Fail(row[2],row[3],row[4],row[5]))
 
+        #print(df)
+
         # List of strike 3 flagged boards for printing
         flagged = []
         for item in strike3_list:
@@ -81,12 +91,9 @@ def main():
                 temp_df.to_excel(writer, f'{board}_{sn}')
                 #print(df.xs(board, level=0).xs(sn, level=0))
     else:
-        print('RESULT: No failures for given date range.')
+        print('RESULT: No failures for given date range.') """
 
 class Strike3(object):
-    """
-    Class object definition for boards with failures
-    """
     def __init__(self, board_sn):
         self.board_sn = board_sn
         self.fails = []
@@ -101,9 +108,6 @@ class Strike3(object):
         return None, None
 
 class Fail(object):
-    """
-    Class object definition for failure entries
-    """
     def __init__(self, slot, date, time, mode):
         self.slot = slot
         self.date = date

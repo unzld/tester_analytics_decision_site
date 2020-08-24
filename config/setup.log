@@ -1,0 +1,62 @@
+                   ETS-364 LEVEL 3 DIAGNOSTICS TEST RESULTS
+
+
+Test BOARD              RESULT   |   Test BOARD              RESULT
+01 - PCIB                  N/A   |   10 - ICOM   50->32         N/A   |   
+02 - Primary THIB          N/A   |   10 - ICOM   51->33         N/A   |   
+04 - First CBIT64          N/A   |   10 - ICOM   52             N/A   |   
+07 - Master Clock          N/A   |   10 - ICOM   53             N/A   |   
+10 - ICOM   00             N/A   |   10 - ICOM   54             N/A   |   
+10 - ICOM   01             N/A   |   10 - ICOM   55->81         N/A   |   
+10 - ICOM   02             N/A   |   10 - ICOM   56->26         N/A   |   
+10 - ICOM   03             N/A   |   10 - ICOM   57->27         N/A   |   
+10 - ICOM   04             N/A   |   10 - ICOM   58->30         N/A   |   
+10 - ICOM   05             N/A   |   10 - ICOM   59->31         N/A   |   
+10 - ICOM   06->08         N/A   |   10 - ICOM   60->34         N/A   |   
+10 - ICOM   07->09         N/A   |   10 - ICOM   61->35         N/A   |   
+10 - ICOM   08             N/A   |   10 - ICOM   62             N/A   |   
+10 - ICOM   09             N/A   |   10 - ICOM   63             N/A   |   
+10 - ICOM   10->06         N/A   |   30 - QMS 16                N/A   |   
+10 - ICOM   11->07         N/A   |   30 - QMS 17                N/A   |   
+10 - ICOM   12->10         N/A   |   30 - QMS 20                N/A   |   
+10 - ICOM   13->11         N/A   |   30 - QMS 21                N/A   |   
+10 - ICOM   14             N/A   |   38 - DPU 00                N/A   |   
+10 - ICOM   15             N/A   |   38 - DPU 01                N/A   |   
+10 - ICOM   16->12         N/A   |   38 - DPU 02                N/A   |   
+10 - ICOM   17->13         N/A   |   38 - DPU 03                N/A   |   
+10 - ICOM   18->16         N/A   |   38 - DPU 04                N/A   |   
+10 - ICOM   19->17         N/A   |   38 - DPU 05                N/A   |   
+10 - ICOM   20             N/A   |   38 - DPU 06                N/A   |   
+10 - ICOM   21             N/A   |   38 - DPU 07                N/A   |   
+10 - ICOM   22->24         N/A   |   39 - GPRLYS  1 - 32        N/A   |   
+10 - ICOM   23->25         N/A   |   40 - QTMU 0                N/A   |   
+10 - ICOM   24             N/A   |   41 - Digital Integration   N/A   |   
+10 - ICOM   25             N/A   |   44 - APU12 04               P    |   
+10 - ICOM   26             N/A   |   44 - APU12 05               P    |   
+10 - ICOM   27             N/A   |   44 - APU12 08              N/A   |   
+10 - ICOM   28             N/A   |   44 - APU12 09              N/A   |   
+10 - ICOM   29             N/A   |   44 - APU12 10              N/A   |   
+10 - ICOM   30             N/A   |   44 - APU12 11              N/A   |   
+10 - ICOM   31             N/A   |   44 - APU12 14             ????   |   
+10 - ICOM   32             N/A   |   44 - APU12 15             ????   |   
+10 - ICOM   33             N/A   |   44 - APU12 24              N/A   |   
+10 - ICOM   34             N/A   |   44 - APU12 25              N/A   |   
+10 - ICOM   35             N/A   |   44 - APU12 28              N/A   |   
+10 - ICOM   36             N/A   |   44 - APU12 29              N/A   |   
+10 - ICOM   37             N/A   |   44 - APU12 30              N/A   |   
+10 - ICOM   38->102        N/A   |   44 - APU12 31              N/A   |   
+10 - ICOM   39->103        N/A   |   44 - APU12 34              N/A   |   
+10 - ICOM   40             N/A   |   44 - APU12 35              N/A   |   
+10 - ICOM   41             N/A   |   55 - HCMUX 81                    |   
+10 - ICOM   42             N/A   |   56 - SPU112 06             N/A   |   
+10 - ICOM   43             N/A   |   56 - SPU112 07             N/A   |   
+10 - ICOM   44             N/A   |   56 - SPU112 12             N/A   |   
+10 - ICOM   45             N/A   |   56 - SPU112 13             N/A   |   
+10 - ICOM   46             N/A   |   56 - SPU112 26             N/A   |   
+10 - ICOM   47             N/A   |   56 - SPU112 27             N/A   |   
+10 - ICOM   48->28         N/A   |   56 - SPU112 32             N/A   |   
+10 - ICOM   49->29         N/A   |   56 - SPU112 33             N/A   |   
+               Lap Count   = 1
+               Start Time  = 02/08/20  04:25:26
+               Finish Time = 02/08/20  04:29:19
+

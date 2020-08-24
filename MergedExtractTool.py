@@ -2,21 +2,19 @@ from pathlib import Path
 from os import mkdir
 from dataclasses import dataclass
 from shutil import rmtree
-import jsonpickle
-import json
 import re
 import timing
 import argparse
 import os
+from datetime import date
+import itertools
+import pandas as pd
 
 rx_diag = {}
 rx_cal = {}
 rx_cal_res = {}
 
-jsonpickle.set_encoder_options('json', indent=2)
-
 parser = argparse.ArgumentParser()
-parser.add_argument('-s','--setup', action='store_true', help='Clear existing board profiles and generate new ones.')
 parser.add_argument('-d','--dir', help='Directory path to monitor for new logs.', required=True)
 
 def main():
@@ -35,59 +33,85 @@ def main():
 
     ''' Monitoring Start ----------------------- '''
     filepath = args.dir
-    #filepath = 'C:/Users/a0489136/Desktop/Project/Main Project/samplelogs/clprea83/Cal_files'
-    #filepath = 'C:/Users/a0489136/Desktop/test/samplelogs/logs_Ea90'
 
-    #Clear and Generate profiles
-    if args.setup:
-        clear_filelist()
-        
+    list_subfolders = [f.path for f in os.scandir(filepath) if f.is_dir()]
+
+    for tester_folder in list_subfolders:
+        print(f'\nCurrent tester: {tester_folder}...')
         #Get list of logs to process
-        queue = get_jobs(filepath)
-        #print(f'Found {len(queue)} logs to record.')
-        tester_name = str(queue[0]).replace('/','\\').split('\\')
-        tester_name = tester_name[-1].split('_')[1]
+        queue = get_jobs(tester_folder)
+        if queue:
+            tester_name = str(queue[0]).replace('/','\\').split('\\')
+            tester_name = tester_name[-1].split('_')[1]
 
-        #Clear old profiles and generate new ones
-        Board.clear_all_profiles()
-        gen_profiles('./config/setup.log', tester_name)
+            #Clear old profiles and generate new ones
+            board_list = gen_profiles('./config/setup.log', tester_name)
 
-    else:
-        #Get list of logs to process
-        queue = get_jobs(filepath)
-        print(f'Found {len(queue)} new logs to record in {filepath}.')
+            #Get list of logs to process
+            queue = get_jobs(tester_folder)
+            print(f'Found {len(queue)} new logs to record in {tester_folder}.')
 
-        #Load profiles from ./profiles
-        board_list = load_profiles()
+            #Process each job in queue
+            cal_count = 0
+            diag_count = 0
+            cal_entry_count = 0
+            diag_entry_count = 0
+            if queue: print('\nReading new logs..')
+            for job in queue:
+                filename = str(job).replace('/','\\').split('\\')
+                filename = filename[-1]
+                print(filename)
+                log_mode = filename.split('_')[0]
 
-        #Process each job in queue
-        cal_count = 0
-        diag_count = 0
-        cal_entry_count = 0
-        diag_entry_count = 0
-        if queue: print('\nReading new logs..')
-        for job in queue:
-            filename = str(job).replace('/','\\').split('\\')
-            filename = filename[-1]
-            print(filename)
-            log_mode = filename.split('_')[0]
+                if log_mode.lower() == 'cal':
+                    cal_entry_count += load_cal_result(job, board_list, filename, tester_name)
+                    cal_count += 1
+                elif log_mode.lower() == 'diag':
+                    diag_entry_count += load_diag_result(job, board_list, filename)
+                    diag_count += 1
 
-            if log_mode.lower() == 'cal':
-                cal_entry_count += load_cal_result(job, board_list, filename)
-                cal_count += 1
-            elif log_mode.lower() == 'diag':
-                diag_entry_count += load_diag_result(job, board_list, filename)
-                diag_count += 1
+            if cal_count > 0: print(f'Total calibration logs processed: {cal_count}')
+            if diag_count > 0: print(f'Total diagnostic logs processed: {diag_count}')
 
-        if cal_count > 0: print(f'Total calibration logs processed: {cal_count}')
-        if diag_count > 0: print(f'Total diagnostic logs processed: {diag_count}')
+            # Set ipython's max row display
+            pd.set_option('display.max_row', None)
 
-        #Save profile changes to disk
-        save_profiles(board_list)
+            # Set iPython's max column width to 50
+            pd.set_option('display.max_columns', 100)
 
-        #Add finished jobs to file_list.json
-        update_filelist(queue)
+            #loop through board_list
+            for board in board_list:
+                #if board == board_list[-1]:
+                entries_list = board.list_entries()
+                columns = ['Tester', 'Board', 'Slot', 'DIB SN', 'DIB PN', 'Self-Test', 'Date', 'Time', 'Mode', 'SN', 'Rev', 'Result', 'Fails']
+                df = pd.DataFrame(entries_list, columns=columns)
+                
+                df['Date'] = pd.to_datetime(df['Date'], format='%m/%d/%y')
+                df = df.sort_values(by=['Date','Time'])
+                df = df.reset_index(drop=True)
+                
+                curr_sn = None
+                remarks_list = []
+                for index, row in df.iterrows():
+                    if not curr_sn:
+                        remarks_list.append(' ')
+                        curr_sn = row['SN']
+                    else:
+                        if curr_sn != row['SN']:
+                            sn = row['SN']
+                            remarks_list.append(f'Replaced SN from {curr_sn} to {sn}')
+                            curr_sn = sn
+                        else:
+                            remarks_list.append(' ')
 
+                df['Remarks'] = remarks_list
+
+                board.all_entries = df
+                        
+            gen_csv_merged(board_list)
+        else:
+            print(f'{tester_folder} has no log files.')
+            
 def load_diag_result(filepath, board_list, filename):
     '''
     Reads diagnostic log located in filepath and adds entries to diag_history of boards in board_list
@@ -97,7 +121,7 @@ def load_diag_result(filepath, board_list, filename):
     table_left = [] #entries from table - left
     table_right = [] #entries from table - right
     table_list = [] #table left + right
-    with open(filepath) as f:
+    with open(filepath, encoding="ascii", errors="surrogateescape") as f:
         line = f.readline()
         dut = ''
         while line:
@@ -109,6 +133,7 @@ def load_diag_result(filepath, board_list, filename):
                 continue
             elif key == 'testing':
                 sn = match.group('sn').strip()
+                sn = sn.zfill(5)
                 btype = match.group('btype').strip()
                 error = ''
 
@@ -179,8 +204,6 @@ def load_diag_result(filepath, board_list, filename):
                 for entry in table_list:
                     entry.date = match.group('date').strip()
                     entry.time = match.group('time').strip()
-
-                    #print(f'{entry.name} {entry.date} {entry.time} {entry.sn} {entry.res} {entry.err}')
                 
                 master_entry_list += table_list
                 #reset
@@ -198,35 +221,21 @@ def load_diag_result(filepath, board_list, filename):
     count = 0
     for entry in master_entry_list:
         for board in board_list:
-            """ if entry.tname == 'Master Clock' and board.name == 'Master Clock':
-                print('hi') """
             if entry.tname.lower() in board.name.lower() and board.slot in entry.tslot:
-                if entry.sn == '': sn = 'N/A'
+                if entry.sn == '': entry.sn = 'N/A'
                 board.diag_history.append(entry)
-                #entry.bool = True
-                #master_entry_list.remove(entry)
                 count += 1
                 break
-    
-    """ for entry in master_entry_list:
-        if not entry.bool:
-            print(f'{entry.tname} {entry.tslot} {entry.date} {filepath}') """
-
-    
-    #print(f'number of saved entries: {count}')
-
-    #print(f'Processed diagnostic log from {filepath}.')
 
     return count
 
-def load_cal_result(filepath, board_list, filename):
+def load_cal_result(filepath, board_list, filename, tester):
     '''
     Reads calibration log located in filepath and adds entries to cal_history of boards in board_list
     '''
     count = 0
-    with open(filepath) as f:
+    with open(filepath, encoding="ascii", errors="surrogateescape") as f:
         line = f.readline()
-        #loaded_tester_info = False
         dut = ''
         dut_pn = ''
         self_test = ''
@@ -262,6 +271,7 @@ def load_cal_result(filepath, board_list, filename):
 
                 mode = match.group('mode').strip() #Stores current test mode (Cal or Chk)
                 sn = match.group('sn').strip() #Stores board SN
+                sn = sn.zfill(5)
                 rev = match.group('rev').strip()
                 remark = ''
 
@@ -285,6 +295,10 @@ def load_cal_result(filepath, board_list, filename):
                         if item.name.lower() == btype.lower() and int(item.slot) == int(slot):
                             board = item
                             break
+                
+                if board == None:
+                    board = Board(btype, slot, tester)
+                    board_list.append(board)
 
                 #Check for results
                 res_line = f.readline()
@@ -320,8 +334,6 @@ def load_cal_result(filepath, board_list, filename):
 
             #Go to next line
             line = f.readline()
-    #print(f'{count} entries done')
-    #print(f'Processed calibration log from {filepath}.')
 
     return count
 
@@ -337,10 +349,9 @@ def gen_profiles(filepath, tester):
     table_right = []
     setup_dict = {'diag_table_setup': rx_diag['diag_table_setup'], 'diag_table_end': rx_diag['diag_table_end']}
 
-    with open(filepath) as f:
+    with open(filepath, encoding="ascii", errors="surrogateescape") as f:
         line = f.readline()
         while line:
-            #print(line)
             #Parse every line using parse_line and store it to key and match
             key, match = parse_line(line, setup_dict)
 
@@ -367,91 +378,28 @@ def gen_profiles(filepath, tester):
     for item in board_list:
         if item.name == 'DPU':
             item.name = 'DPU16'
-        item.generate_profile()
 
-    print(f'Generated {len(table_left + table_right)} new board profiles.')
+    #print(f'Generated {len(table_left + table_right)} new board profiles.')
 
     return table_left + table_right
-
-def load_profiles():
-    '''
-    Loads existing profiles in ./profiles and returns them as a list of Board objects
-    '''
-    board_list = []
-    for profile in Path('./profiles').iterdir():
-        if profile.is_file():
-            #load profile
-            with open(profile, 'r') as f:
-                json_str = f.read()
-                board = jsonpickle.decode(json_str)
-                #print(f'{board.name} {board.slot} {board.tester}')
-                board_list.append(board)
-    
-    print(f'{len(board_list)} board profiles loaded.')
-
-    return board_list
-
-def save_profiles(board_list):
-    '''
-    Save profiles from board_list to JSON format located in ./profile.
-    '''
-    for board in board_list:
-        board.generate_profile()
 
 def get_jobs(filepath):
     '''
     Returns a list of log file paths (STR) to be processed next.
     '''
     files_actual = []
-    files_json = []
-    process_queue = []
 
-    for child in Path(filepath).iterdir():
+    """ for child in Path(filepath).iterdir():
         if child.is_file():
-            files_actual.append(str(child))
+            files_actual.append(str(child)) """
 
-    #check if file_list.json exists
-    if Path(f'./config/file_list.json').exists():
-        #read json file
-        with open('./config/file_list.json', 'r') as f:
-            try:
-                files_json = json.load(f)
-            except json.decoder.JSONDecodeError:
-                print('Reading file_list: The file_list.json is either empty or corrupted. Continuing..')
-        
-        for item in files_actual:
-            if item not in files_json and item.lower().endswith('.log'):
-                process_queue.append(item)
-    else:
-        process_queue = files_actual.copy()
+    for root, dirs, files in os.walk(filepath):
+        for file in files:
+            #append the file name to the list
+            if(file.endswith(".log")):
+                files_actual.append(os.path.join(root,file))
     
-    return process_queue
-
-def update_filelist(done_jobs):
-    '''
-    Updates ./config/file_list.json to add processed logs
-    '''
-    #save to json
-    files_json = []
-    
-    if Path(f'./config/file_list.json').exists(): mode = 'r+'
-    else: mode = 'w'
-    #read json file
-    with open('./config/file_list.json', mode) as f:
-        try:
-            if mode == 'r+': files_json = json.load(f)
-        except json.decoder.JSONDecodeError:
-            print('Saving file_list: The file_list.json is either empty or corrupted. Continuing..')
-        finally:
-            for item in done_jobs:
-                if item not in files_json and item.lower().endswith('.log'):
-                    files_json.append(item)
-            f.seek(0)
-            json.dump(files_json, f, indent=4)
-
-def clear_filelist():
-    if Path(f'./config/file_list.json').exists():
-        os.remove(f'./config/file_list.json')
+    return files_actual
 
 def parse_line(line, dict):
     '''
@@ -472,7 +420,7 @@ def load_regex_dict(filepath):
     Returns a dictionary loaded with RegEx from filepath.
     '''
     dict = {}
-    with open(filepath) as f:
+    with open(filepath, encoding="ascii", errors="surrogateescape") as f:
         line = f.readline()
         while line:
             #Parse line and split into key and value then store into dictionary
@@ -480,6 +428,28 @@ def load_regex_dict(filepath):
             dict[x[0]] = re.compile(x[1])
             line = f.readline()
     return dict
+
+def gen_csv_merged(board_list):
+    today = date.today().strftime('%m%d%Y')
+    filename = f'{board_list[0].tester}_Summary_Cal_Diag_All_{today}'
+    if not Path('./output').exists():
+        try:
+            mkdir('./output')
+        except OSError:
+            print('Failed creating output directory.')
+            exit(2)
+
+    """ with open(f'./output/{filename}.csv', 'w', encoding="ascii", errors="surrogateescape") as f:
+        f.write(f'Tester,Board,Slot,DIB SN,DIB PN,Self-Test,Date,Time,Mode,SN,REV,Result,Remark\n') """
+
+    all_tables = []
+    for board in board_list:
+        all_tables.append(board.all_entries)
+    
+    result = pd.concat(all_tables)
+    result.to_csv(f'./output/{filename}.csv', index=False)
+    
+    print(f'Process finished. Merged summary located at ./output/{filename}.csv.')
 
 class Board(object):
     '''
@@ -501,21 +471,7 @@ class Board(object):
 
         self.cal_history = []
         self.diag_history = []
-        
-    def generate_profile(self):
-        '''
-        Converts Board instance to json format and outputs it in ./profile.
-        '''
-        if not Path('./profiles').exists():
-            try:
-                mkdir('./profiles')
-            except OSError:
-                print('Failed creating profile directory.')
-        slot = self.slot.replace('>', '', 1)
-        if not self.path: self.path = f'./profiles/{self.name}_{slot}.json'
-        with open(self.path, 'w') as f:
-            board_json = jsonpickle.encode(self)
-            f.write(board_json)
+        self.all_entries = None
     
     def add_cal_entry(self, entry):
         '''
@@ -541,18 +497,16 @@ class Board(object):
         '''
         self.diag_history.clear()
     
-    @classmethod
-    def clear_all_profiles(cls):
-        '''
-        Clears all board profiles located in ./profile.
-        '''
-        if Path('./profiles').exists():
-            try:
-                rmtree('./profiles')
-            except OSError:
-                print('Failed deleting profile directory.')
-        
-        print('Directory ./profiles has been deleted. All board profiles are cleared.')
+    def list_entries(self):
+        entries_list = []
+        for entry in self.cal_history + self.diag_history:
+            if isinstance(entry, CalEntry):
+                data = [self.tester, self.name, self.slot, f'\t{entry.dut}', entry.dut_pn, entry.self_test, entry.date, entry.time, entry.mode, f'\t{entry.sn}', entry.rev, entry.result, entry.remark]
+                entries_list.append(data)
+            elif isinstance(entry, DiagEntry):
+                data = [self.tester, self.name, self.slot, 'N/A', entry.dut, 'N/A', entry.date, entry.time, 'Diag', f'\t{entry.sn}', 'N/A', entry.result, entry.remark]
+                entries_list.append(data)
+        return entries_list
            
 class EntryBase(object):
     '''
